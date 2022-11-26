@@ -1,8 +1,9 @@
 import {_getInstance} from '@firebase/auth/internal';
+import escapeHtml from 'escape-html';
 import express from 'express';
 import {initializeApp} from 'firebase/app';
 import {getAuth, inMemoryPersistence, onAuthStateChanged} from 'firebase/auth';
-import {collection, doc, getDoc, getDocs, getFirestore, query, where} from 'firebase/firestore';
+import {collection, doc, getDoc, getDocs, getFirestore, orderBy, query, where} from 'firebase/firestore';
 
 import backendUser from './backend_user.json' assert {type : 'json'};
 import {firebaseConfigHive} from './firebase_config_hive.js';
@@ -55,6 +56,35 @@ function hiveUserToMastodonUser(hiveUser) {
   };
 }
 
+function hivePostToMastodonStatus(hivePost, hiveUser) {
+  return {
+    id: hivePost._id,
+    created_at: hiveTimestampToMastodonDate(hivePost.created),
+    in_reply_to_id: null,
+    in_reply_to_account_id: null,
+    sensitive: hivePost.is_nsfw,
+    spoiler_text: '',
+    visibility: hivePost.is_private ? 'private' : 'public',
+    language: 'en',
+    uri: 'https://hivesocial.app/posts/' + hivePost._id,
+    url: `${serverRoot}/@${hivePost.ouname}/${hivePost._id}`,
+    replies_count: 0,
+    reblogs_count: 0,
+    favourites_count: 0,
+    edited_at: null,
+    content: escapeHtml(hivePost.desc),
+    reblog: null,
+    application: {name: 'Hive Social', website: 'https://hivesocial.app'},
+    account: hiveUserToMastodonUser(hiveUser),
+    media_attachments: [],
+    mentions: [],
+    tags: [],
+    emojis: [],
+    card: null,
+    poll: null,
+  };
+}
+
 app.get('/api/v1/accounts/lookup', async (req, res) => {
   const username = req.query.acct;
   const querySnapshot = await getDocs(
@@ -67,8 +97,21 @@ app.get('/api/v1/accounts/lookup', async (req, res) => {
   res.status(200).json(hiveUserToMastodonUser(data));
 });
 
-app.get('/api/v1/accounts/:userid/statuses', async (req, res) => {
-  res.status(200).json([]);
+app.get('/api/v1/accounts/:userId/statuses', async (req, res) => {
+  if (req.query.pinned === 'true') {
+    res.status(200).json([]);
+    return;
+  }
+  const userId = req.params.userId;
+
+  const userDoc = await getDoc(doc(db, 'users', userId));
+  const hiveUser = {...userDoc.data(), _id: userId};
+
+  const querySnapshot = await getDocs(query(
+      collection(db, 'posts'), where('ouid', '==', userId),
+      orderBy('__name__', 'desc')));
+  res.status(200).json(querySnapshot.docs.map(
+      doc => hivePostToMastodonStatus({...doc.data(), _id: doc.id}, hiveUser)));
 });
 
 const indexRoutes = ['/@:username', '/about'];
