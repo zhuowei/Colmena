@@ -12,7 +12,7 @@ const app = express();
 
 const port = process.env['PORT'] || 3000;
 const staticPath = 'public';
-const serverRoot = 'http://localhost:3000';
+const serverRoot = process.env['SERVER_ROOT'] || `http://localhost:${port}`;
 
 app.use(express.static(staticPath))
 _getInstance(inMemoryPersistence)
@@ -86,7 +86,7 @@ function hivePostToMastodonStatus(hivePost, hiveUser) {
 }
 
 app.get('/api/v1/accounts/lookup', async (req, res) => {
-  const username = req.query.acct;
+  const username = req.query.acct.toLowerCase();
   const querySnapshot = await getDocs(
       query(collection(db, 'users'), where('uname', '==', username)));
   if (querySnapshot.docs.length != 1) {
