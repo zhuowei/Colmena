@@ -1,5 +1,7 @@
 Unofficial web interface for [Hive Social](https://hivesocial.app) based on Mastodon's web interface.
 
+![screenshot](https://notnow.dev/media/c6c1c6ed-1004-4eee-a85a-e90652666437/Fihb2laWYAAQPlP.jpeg)
+
 ## To run:
 
 ### Hosted instance
@@ -36,6 +38,12 @@ The server will start on http://localhost:3000.
 Copy the entire public/ folder of a Mastodon v4.0.2 installation into this directory
 
 Copy mastodon_patches/ into public/
+
+## Documentation
+
+Hive Social is built entirely using [Firebase Firestore](https://firebase.google.com/docs/firestore), a serverless database designed to be queried directly from the client.
+
+Login is handled with Firebase Authentication; however, access to the authentication APIs are restricted to "localhost", "hivecopy-508e2.firebaseapp.com", and "hivecopy-508e2.web.app".
 
 ## License
 
