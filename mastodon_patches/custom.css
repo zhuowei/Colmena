@@ -1,0 +1,28 @@
+.logo {
+display: none;
+}
+.server-banner {
+display: none;
+}
+
+.link-footer {
+display: none;
+}
+
+.sign-in-banner p {
+display: none;
+}
+
+.search {
+display: none;
+}
+
+.fa-search{
+display:none;
+}
+.sign-in-banner {
+display:none;
+}
+a[title=Search]{
+display:none;
+}
