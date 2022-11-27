@@ -3,7 +3,7 @@ import escapeHtml from 'escape-html';
 import express from 'express';
 import {initializeApp} from 'firebase/app';
 import {getAuth, inMemoryPersistence, onAuthStateChanged} from 'firebase/auth';
-import {collection, doc, getDoc, getDocs, getFirestore, orderBy, query, where} from 'firebase/firestore';
+import {collection, doc, getDoc, getDocs, getFirestore, limit, orderBy, query, where} from 'firebase/firestore';
 
 import backendUser from './backend_user.json' assert {type : 'json'};
 import {firebaseConfigHive} from './firebase_config_hive.js';
@@ -68,9 +68,9 @@ function hivePostToMastodonStatus(hivePost, hiveUser) {
     language: 'en',
     uri: 'https://hivesocial.app/posts/' + hivePost._id,
     url: `${serverRoot}/@${hivePost.ouname}/${hivePost._id}`,
-    replies_count: 0,
+    replies_count: hivePost.num_comments,
     reblogs_count: 0,
-    favourites_count: 0,
+    favourites_count: hivePost.num_likes,
     edited_at: null,
     content: escapeHtml(hivePost.desc),
     reblog: null,
@@ -85,6 +85,31 @@ function hivePostToMastodonStatus(hivePost, hiveUser) {
   };
 }
 
+function handlePagination(req, ...filters) {
+  const output = [...filters, limit((req.query.limit || 20) | 0)];
+  if (req.query.min_id) {
+    output.push(where('__name__', '>', req.query.min_id));
+  }
+  if (req.query.max_id) {
+    output.push(where('__name__', '<', req.query.max_id));
+  }
+  return output;
+}
+
+function paginateLinkHeader(req, output) {
+  if (output.length === 0) {
+    return '';
+  }
+  const url = `${serverRoot}/${req.url}`;
+  const nextUrl = new URL(url);
+  nextUrl.searchParams.set('max_id', output[output.length - 1].id);
+  nextUrl.searchParams.delete('min_id');
+  const prevUrl = new URL(url);
+  prevUrl.searchParams.set('min_id', output[0].id);
+  nextUrl.searchParams.delete('max_id');
+  return `<${nextUrl}>; rel="next", <${prevUrl}>; rel="prev"`;
+}
+
 app.get('/api/v1/accounts/lookup', async (req, res) => {
   const username = req.query.acct.toLowerCase();
   const querySnapshot = await getDocs(
@@ -97,6 +122,14 @@ app.get('/api/v1/accounts/lookup', async (req, res) => {
   res.status(200).json(hiveUserToMastodonUser(data));
 });
 
+app.get('/api/v1/accounts/:userId', async (req, res) => {
+  const userId = req.params.userId;
+
+  const userDoc = await getDoc(doc(db, 'users', userId));
+  const hiveUser = {...userDoc.data(), _id: userId};
+  res.status(200).json(hiveUserToMastodonUser(hiveUser));
+});
+
 app.get('/api/v1/accounts/:userId/statuses', async (req, res) => {
   if (req.query.pinned === 'true') {
     res.status(200).json([]);
@@ -107,14 +140,32 @@ app.get('/api/v1/accounts/:userId/statuses', async (req, res) => {
   const userDoc = await getDoc(doc(db, 'users', userId));
   const hiveUser = {...userDoc.data(), _id: userId};
 
-  const querySnapshot = await getDocs(query(
-      collection(db, 'posts'), where('ouid', '==', userId),
-      orderBy('__name__', 'desc')));
-  res.status(200).json(querySnapshot.docs.map(
-      doc => hivePostToMastodonStatus({...doc.data(), _id: doc.id}, hiveUser)));
+  const querySnapshot = await getDocs(query(...handlePagination(
+      req, collection(db, 'posts'), where('ouid', '==', userId),
+      orderBy('__name__', 'desc'))));
+  const output = querySnapshot.docs.map(
+      doc => hivePostToMastodonStatus({...doc.data(), _id: doc.id}, hiveUser));
+  res.status(200).header('link', paginateLinkHeader(req, output)).json(output);
 });
 
-const indexRoutes = ['/@:username', '/about'];
+app.get('/api/v1/statuses/:statusId', async (req, res) => {
+  const statusId = req.params.statusId;
+
+  const postDoc = await getDoc(doc(db, 'posts', statusId));
+  const hivePost = {...postDoc.data(), _id: statusId};
+  const userDoc = await getDoc(doc(db, 'users', hivePost.ouid));
+  const hiveUser = {...userDoc.data(), _id: hivePost.ouid};
+  res.status(200).json(hivePostToMastodonStatus(hivePost, hiveUser));
+});
+
+app.get('/api/v1/statuses/:statusId/context', async (req, res) => {
+  // TODO(zhuowei): can't figure this one out.
+  // I'll probably translate questions as embeds not threads; still can't find
+  // an actual thread
+  res.status(200).json({ancestors: [], descendants: []});
+});
+
+const indexRoutes = ['/@:username', '/@:username/:status', '/about'];
 
 for (const indexRoute of indexRoutes) {
   app.get(indexRoute, (req, res) => {
