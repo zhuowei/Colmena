@@ -62,7 +62,8 @@ function hivePostToMastodonStatus(hivePost, hiveUser) {
   const mediaAttachments = [];
   for (let i = 0; i < hivePost.media.length; i++) {
     mediaAttachments.push({
-      preview_url: hivePost.thumb[i] || hivePost.media[i],
+      preview_url: hivePost.thumb && hivePost.thumb[i] ? hivePost.thumb[i] :
+                                                         hivePost.media[i],
       type: 'image',
       url: hivePost.media[i],
     });
