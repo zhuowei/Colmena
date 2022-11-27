@@ -39,7 +39,9 @@ function hiveUserToMastodonUser(hiveUser) {
     bot: false,
     discoverable: true,
     group: false,
-    created_at: hiveTimestampToMastodonDate(hiveUser.created),
+    created_at: hiveUser.created ?
+        hiveTimestampToMastodonDate(hiveUser.created) :
+        '2000-01-01T00:00:00.000Z',
     note: hiveUser.bio || '',
     url: `${serverRoot}/@${hiveUser.uname}`,
     avatar: hiveUser.avatar || PLACEHOLDER_AVATAR,
@@ -60,7 +62,7 @@ function hivePostToMastodonStatus(hivePost, hiveUser) {
   const mediaAttachments = [];
   for (let i = 0; i < hivePost.media.length; i++) {
     mediaAttachments.push({
-      preview_url: hivePost.thumb[i],
+      preview_url: hivePost.thumb[i] || hivePost.media[i],
       type: 'image',
       url: hivePost.media[i],
     });
@@ -173,7 +175,71 @@ app.get('/api/v1/statuses/:statusId/context', async (req, res) => {
   res.status(200).json({ancestors: [], descendants: []});
 });
 
-const indexRoutes = ['/@:username', '/@:username/:status', '/about'];
+async function getHiveUserById(userId) {
+  const userDoc = await getDoc(doc(db, 'users', userId));
+  return {...userDoc.data(), _id: userId};
+}
+
+app.get('/api/v1/timelines/tag/:tagName', async (req, res) => {
+  const tagName = req.params.tagName.toLowerCase();
+  const querySnapshot = await getDocs(query(...handlePagination(
+      req, collection(db, 'posts'),
+      where('hashtags', 'array-contains', tagName),
+      orderBy('__name__', 'desc'))));
+  const output = await Promise.all(querySnapshot.docs.map(
+      async doc => hivePostToMastodonStatus(
+          {...doc.data(), _id: doc.id},
+          await getHiveUserById(doc.data().ouid))));
+  res.status(200).header('link', paginateLinkHeader(req, output)).json(output);
+});
+
+app.get('/api/v2/search', async (req, res) => {
+  const q = req.query.q;
+  let lowercasedQuery = q.trim().toLowerCase();
+  if (lowercasedQuery.length === 0) {
+    res.status(200).json([]);
+    return;
+  }
+  let fetchUsername = null;
+  let fetchHashtag = null;
+  if (!/[^a-z0-9]/.test(lowercasedQuery)) {
+    fetchUsername = fetchHashtag = lowercasedQuery;
+  } else if (
+      lowercasedQuery.length > 1 &&
+      !/[^a-z0-9]/.test(lowercasedQuery.substring(1))) {
+    // TODO(zhuowei): does Hive support multilingual hashtags?
+    const firstChar = lowercasedQuery.charAt(0);
+    const rest = lowercasedQuery.substring(1);
+    if (firstChar === '@') {
+      fetchUsername = rest;
+    } else if (firstChar === '#') {
+      fetchHashtag = rest;
+    }
+  }
+  const returnAccounts = [];
+  const returnHashtags = [];
+  if (fetchUsername) {
+    const querySnapshot = await getDocs(
+        query(collection(db, 'users'), where('uname', '==', fetchUsername)));
+    if (querySnapshot.docs.length == 1) {
+      returnAccounts.push(hiveUserToMastodonUser(
+          {...querySnapshot.docs[0].data(), _id: querySnapshot.docs[0].id}));
+    }
+  }
+  if (fetchHashtag) {
+    returnHashtags.push({
+      name: fetchHashtag,
+      url: `${serverRoot}/tags/${fetchHashtag}`,
+      history: []
+    });
+  }
+  res.status(200).json(
+      {accounts: returnAccounts, hashtags: returnHashtags, statuses: []});
+});
+
+const indexRoutes = [
+  '/@:username', '/@:username/:status', '/tags/:tagName', '/about', '/search'
+];
 
 for (const indexRoute of indexRoutes) {
   app.get(indexRoute, (req, res) => {

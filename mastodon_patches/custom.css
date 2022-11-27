@@ -13,16 +13,6 @@ display: none;
 display: none;
 }
 
-.search {
-display: none;
-}
-
-.fa-search{
-display:none;
-}
 .sign-in-banner {
-display:none;
-}
-a[title=Search]{
 display:none;
 }
