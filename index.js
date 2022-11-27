@@ -57,6 +57,14 @@ function hiveUserToMastodonUser(hiveUser) {
 }
 
 function hivePostToMastodonStatus(hivePost, hiveUser) {
+  const mediaAttachments = [];
+  for (let i = 0; i < hivePost.media.length; i++) {
+    mediaAttachments.push({
+      preview_url: hivePost.thumb[i],
+      type: 'image',
+      url: hivePost.media[i],
+    });
+  }
   return {
     id: hivePost._id,
     created_at: hiveTimestampToMastodonDate(hivePost.created),
@@ -76,7 +84,7 @@ function hivePostToMastodonStatus(hivePost, hiveUser) {
     reblog: null,
     application: {name: 'Hive Social', website: 'https://hivesocial.app'},
     account: hiveUserToMastodonUser(hiveUser),
-    media_attachments: [],
+    media_attachments: mediaAttachments,
     mentions: [],
     tags: [],
     emojis: [],
