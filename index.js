@@ -96,6 +96,42 @@ function hivePostToMastodonStatus(hivePost, hiveUser) {
   };
 }
 
+function hiveCommentToMastodonStatus(hiveComment, hiveUser) {
+  return {
+    id: `${hiveComment.pid}!${hiveComment._id}`,
+    created_at: hiveComment.creationDate ?
+        hiveTimestampToMastodonDate(hiveComment.creationDate) :
+        null,
+    in_reply_to_id: hiveComment.parentId ?
+        `$(hiveComment.pid}!${hiveComment.parentId}` :
+        hiveComment.pid,
+    in_reply_to_account_id: null,
+    sensitive: false,
+    spoiler_text: '',
+    visibility: 'public',
+    language: 'en',
+    uri: `https://hivesocial.app/posts/${hiveComment.pid}/comments/${
+        hiveComment._id}`,
+    url: `${serverRoot}/@${hiveUser.uname}/${hiveComment.pid}!${
+        hiveComment._id}`,
+    replies_count: hiveComment.num_commented,
+    reblogs_count: 0,
+    favourites_count: hiveComment.num_likes,
+    edited_at: null,
+    content: escapeHtml(hiveComment.commentText),
+    reblog: null,
+    application: {name: 'Hive Social', website: 'https://hivesocial.app'},
+    account: hiveUserToMastodonUser(hiveUser),
+    media_attachments: [],  // TODO(zhuowei)
+    mentions: [],
+    tags: [],
+    emojis: [],
+    card: null,
+    poll: null,
+    original: hiveComment,
+  };
+}
+
 function handlePagination(req, ...filters) {
   const output = [...filters, limit((req.query.limit || 20) | 0)];
   if (req.query.min_id) {
@@ -161,6 +197,16 @@ app.get('/api/v1/accounts/:userId/statuses', async (req, res) => {
 
 app.get('/api/v1/statuses/:statusId', async (req, res) => {
   const statusId = req.params.statusId;
+  if (statusId.indexOf('!') !== -1) {
+    const [parentPostId, commentId] = statusId.split('!');
+    const commentDoc =
+        await getDoc(doc(db, 'posts', parentPostId, 'comments', commentId));
+    const hiveComment = {...commentDoc.data(), _id: commentId};
+    const userDoc = await getDoc(doc(db, 'users', hiveComment.uid));
+    const hiveUser = {...userDoc.data(), _id: hiveComment.uid};
+    res.status(200).json(hiveCommentToMastodonStatus(hiveComment, hiveUser));
+    return;
+  }
 
   const postDoc = await getDoc(doc(db, 'posts', statusId));
   const hivePost = {...postDoc.data(), _id: statusId};
@@ -170,10 +216,21 @@ app.get('/api/v1/statuses/:statusId', async (req, res) => {
 });
 
 app.get('/api/v1/statuses/:statusId/context', async (req, res) => {
+  // TODO(zhuowei): doesn't handle ancestors; only handles context for top
   // TODO(zhuowei): can't figure this one out.
-  // I'll probably translate questions as embeds not threads; still can't find
-  // an actual thread
-  res.status(200).json({ancestors: [], descendants: []});
+  // I'll probably translate questions as embeds not threads
+  const statusId = req.params.statusId;
+  const comments = await getDocs(collection(db, 'posts', statusId, 'comments'));
+  const descendants = await Promise.all(comments.docs.map(async doc => {
+    const hiveComment = {...doc.data(), _id: doc.id};
+    if (!hiveComment.uid) {
+      return null;
+    }
+    return hiveCommentToMastodonStatus(
+        hiveComment, await getHiveUserById(hiveComment.uid));
+  }));
+  res.status(200).json(
+      {ancestors: [], descendants: descendants.filter(a => a !== null)});
 });
 
 async function getHiveUserById(userId) {
