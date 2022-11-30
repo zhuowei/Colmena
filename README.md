@@ -2,11 +2,14 @@ Unofficial web interface for [Hive Social](https://hivesocial.app) based on Mast
 
 ![screenshot](https://notnow.dev/media/c6c1c6ed-1004-4eee-a85a-e90652666437/Fihb2laWYAAQPlP.jpeg)
 
+You can view user profiles, posts, and hashtags. You cannot make posts or login.
+
 ## To run:
 
 ### Hosted instance
 
-Go to https://hipster.house/@username to view that user's Hive Social posts.
+- View Hive Social user profile: https://hipster.house/@hive
+- View Hive Social hashtag: https://hipster.house/tags/photography
 
 ### On a server, using shared credentials (read-only, no login):
 
@@ -26,10 +29,6 @@ Then run
 `node index.js`
 
 The server will start on http://localhost:3000.
-
-### Locally, with your own credentials:
-
-- Coming soon (tm)! (... once I figure out how to actually post!)
 
 ## Building
 
